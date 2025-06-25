@@ -7,17 +7,19 @@
 #   - Supports machine-readable urllist.txt in <category>,<url> format
 #   - Automatically categorizes and stores .rpz files in category subdirectories
 #   - Warns if a GitHub HTML URL is detected (suggests RAW URL)
-#     - Only successful lists appear in the domain stats table
 #   - Tabular status summary at the end (lists, domains, time per list, total time)
-#     - Failed sources are listed in the error log and "Failed sources" section
-#     - Optionally writes status report to file (--status-report/-s)
-#     - RPZ/domain validation for all generated .rpz files (--validate/-V)
-#     - Optionally writes validation report to file (--validation-report)
-#     - Wildcard support (--wildcards/-w)
-#     - Optional SOA/NS record exclusion (--no-soa/-n)
-#     - Flexible logging: logs can be stored in tools/logs/ and excluded from git via .gitignore
+#   - Failed sources are listed in the error log and "Failed sources" section
+#   - Optionally writes status report to file (--status-report/-s)
+#   - RPZ/domain validation for all generated .rpz files (--validate/-V)
+#   - Optionally writes validation report to file (--validation-report)
+#   - Wildcard support (--wildcards/-w)
+#   - Optional SOA/NS record exclusion (--no-soa/-n)
+#   - Flexible logging: logs stored in tools/logs/ and excluded via .gitignore
 #   - Reads list-mappings.csv to use custom filenames for RPZ files
-#   - NEW: Adds license and source comments from list-mappings.csv to RPZ headers
+#   - Adds license and source comments from list-mappings.csv to RPZ headers
+#   - Checks for changes using ETag/Last-Modified or content hash
+#   - Stores metadata in tools/logs/source_metadata.json
+#   - Generates SOURCES.md with source overview including license
 #
 # Usage:
 #   perl blocklist2rpz-multi.pl [options]
@@ -26,7 +28,7 @@
 #   --wildcards, -w             Output wildcard RPZ entries (*.<domain> CNAME .)
 #   --output-dir, -d <dir>      Output base directory for RPZ files (default: .)
 #   --urllist, -l <file>        File with <category>,<url> per line (CSV format)
-#   --list-mappings, -m <file>  File with <url>,<category>,<filename>,<comments> to map URLs to custom RPZ filenames
+#   --list-mappings, -m <file>  File with <url>,<category>,<filename>,<comments>
 #   --error-log, -e <file>      Write unreachable or failed sources to this log file
 #   --no-soa, -n                Do not output SOA and NS records in the RPZ file
 #   --status-report, -s <file>  Write processing summary to this file
@@ -41,12 +43,12 @@
 #     --validate --validation-report tools/logs/validation_$(date +%Y%m%d_%H%M%S).txt
 #
 # Notes:
-#   - .rpz files are stored in category subdirectories (e.g. ads/, malware/, etc.)
-#   - Logs are recommended to be stored in tools/logs/ and excluded from git via .gitignore
+#   - .rpz files are stored in category subdirectories (e.g., ads/, malware/, etc.)
+#   - Logs and metadata are stored in tools/logs/ and excluded via .gitignore
 #   - urllist.txt must use the <category>,<url> format
 #   - list-mappings.csv must use the <url>,<category>,<filename>,<comments> format
 #
-# Version: 1.2 (added license comments in RPZ headers)
+# Version: 1.4 (added license column in SOURCES.md)
 # Author: ummeegge, with community contributions
 ###############################################################################
 
@@ -60,6 +62,9 @@ use File::Path qw(make_path);
 use URI;
 use open ':std', ':encoding(UTF-8)';
 use Text::CSV;
+use JSON;
+use Digest::SHA qw(sha256_hex);
+use File::Slurp;
 
 # --- Command-line option variables ---
 my $wildcards         = 0;
@@ -126,13 +131,16 @@ my @error_sources;
 # --- Time tracking ---
 my $global_start = time();
 
+# --- Load source metadata ---
+my $metadata_file = "$output_dir/tools/logs/source_metadata.json";
+my %source_metadata = -e $metadata_file ? %{ decode_json(read_file($metadata_file)) } : ();
+
 # --- Read list mappings from list-mappings.csv ---
 my %url_to_filename;
 if ($list_mappings) {
     my $csv = Text::CSV->new({ binary => 1, sep_char => ',', auto_diag => 1 });
     open my $mfh, '<:encoding(utf8)', $list_mappings or die "Can't open list-mappings file '$list_mappings': $!\n";
-    # Skip header line
-    $csv->getline($mfh);
+    $csv->getline($mfh); # Skip header
     while (my $row = $csv->getline($mfh)) {
         next unless @$row >= 3;
         my ($url, $category, $filename, $comments) = @$row;
@@ -142,13 +150,13 @@ if ($list_mappings) {
 }
 
 # --- Read categorized sources from urllist.txt ---
-my @categorized_sources;  # Deklariert nur einmal
+my @categorized_sources;
 if ($urllist) {
     open my $ufh, '<', $urllist or die "Cannot open urllist file '$urllist': $!\n";
     while (my $line = <$ufh>) {
         chomp $line;
         $line =~ s/^\s+|\s+$//g;
-        next if $line =~ /^\s*(#.*)?$/;  # Überspringe leere Zeilen und Kommentare
+        next if $line =~ /^\s*(#.*)?$/;
         if ($line =~ /^([a-zA-Z0-9_-]+),(https?:\/\/.+)$/) {
             my ($cat, $url) = ($1, $2);
             push @categorized_sources, { category => $cat, url => $url };
@@ -168,14 +176,12 @@ foreach my $entry (@categorized_sources) {
 
     my $list_start = time();
     my $content = '';
-    my $source_label = $source; # Used for output filename fallback
+    my $source_label = $source;
 
-    # --- Check for GitHub HTML URLs and warn the user ---
+    # --- Check for GitHub HTML URLs ---
     if ($source =~ m{^https://github\.com/([^/]+/[^/]+)/blob/(.+)$}) {
         my $raw_url = "https://raw.githubusercontent.com/$1/$2";
-        warn "\n[WARNING] The URL '$source' looks like a GitHub HTML page, not a raw file!\n";
-        warn "          Please use the RAW URL instead:\n";
-        warn "          $raw_url\n\n";
+        warn "\n[WARNING] HTML GitHub URL detected: $source\nUse RAW URL: $raw_url\n\n";
         print $err_fh "[WARNING] HTML GitHub URL detected: $source\n" if $err_fh;
         push @error_sources, $source;
         $list_stats{$source_label} = { domains => 0, error => 1, time => 0 };
@@ -183,10 +189,15 @@ foreach my $entry (@categorized_sources) {
         next;
     }
 
+    # --- Check for changes using HTTP headers ---
+    my $current_metadata = $source_metadata{$source} // { etag => '', last_modified => '', hash => '', domains => 0 };
+    my $skip_processing = 0;
+
     if ($source =~ m{^https?://}) {
-        my $resp = $ua->get($source);
+        my $req = HTTP::Request->new(HEAD => $source);
+        my $resp = $ua->request($req);
         unless ($resp->is_success) {
-            my $msg = "Could not fetch $source: " . $resp->status_line . "\n";
+            my $msg = "HEAD request failed for $source: " . $resp->status_line . "\n";
             warn $msg;
             print $err_fh $msg if $err_fh;
             push @error_sources, $source;
@@ -194,10 +205,48 @@ foreach my $entry (@categorized_sources) {
             $lists_err++;
             next;
         }
-        $content = $resp->decoded_content;
-        my $uri = URI->new($source);
-        $source_label = (basename($uri->path) ne '') ? basename($uri->path) : $uri->host;
+
+        my $etag = $resp->header('ETag') // '';
+        my $last_modified = $resp->header('Last-Modified') // '';
+
+        if ($etag eq $current_metadata->{etag} && $last_modified eq $current_metadata->{last_modified}) {
+            print "No changes for $source (ETag/Last-Modified unchanged), skipping.\n";
+            $list_stats{$source_label} = { domains => $current_metadata->{domains}, error => 0, time => 0 };
+            $lists_ok++;
+            $skip_processing = 1;
+        } else {
+            # Download source
+            $resp = $ua->get($source);
+            unless ($resp->is_success) {
+                my $msg = "Could not fetch $source: " . $resp->status_line . "\n";
+                warn $msg;
+                print $err_fh $msg if $err_fh;
+                push @error_sources, $source;
+                $list_stats{$source_label} = { domains => 0, error => 1, time => 0 };
+                $lists_err++;
+                next;
+            }
+            $content = $resp->decoded_content;
+            my $content_hash = sha256_hex($content);
+
+            # Fallback: Check content hash
+            if ($content_hash eq $current_metadata->{hash}) {
+                print "No changes for $source (hash unchanged), skipping.\n";
+                $list_stats{$source_label} = { domains => $current_metadata->{domains}, error => 0, time => 0 };
+                $lists_ok++;
+                $skip_processing = 1;
+            } else {
+                $source_metadata{$source} = {
+                    etag => $etag,
+                    last_modified => $last_modified,
+                    hash => $content_hash,
+                    domains => 0, # Will be updated after processing
+                    last_updated => time(),
+                };
+            }
+        }
     } else {
+        # Handle local files
         my $fh;
         unless (open($fh, '<', $source)) {
             my $msg = "Cannot open $source: $!\n";
@@ -211,8 +260,26 @@ foreach my $entry (@categorized_sources) {
         local $/;
         $content = <$fh>;
         close $fh;
+        my $content_hash = sha256_hex($content);
+        if ($content_hash eq $current_metadata->{hash}) {
+            print "No changes for $source (hash unchanged), skipping.\n";
+            $list_stats{$source_label} = { domains => $current_metadata->{domains}, error => 0, time => 0 };
+            $lists_ok++;
+            $skip_processing = 1;
+        } else {
+            $source_metadata{$source} = {
+                etag => '',
+                last_modified => '',
+                hash => $content_hash,
+                domains => 0, # Will be updated after processing
+                last_updated => time(),
+            };
+        }
         $source_label = basename($source);
     }
+
+    # Skip processing if no changes
+    next if $skip_processing;
 
     # --- Determine output filename and comments ---
     my $outfile;
@@ -222,7 +289,6 @@ foreach my $entry (@categorized_sources) {
         $source_label = $url_to_filename{$source}{filename};
         $comments = $url_to_filename{$source}{comments} if $url_to_filename{$source}{comments};
     } else {
-        # Fallback to original filename logic
         $source_label =~ s/[^a-zA-Z0-9_.-]/_/g;
         $source_label =~ s/\.(txt|csv|tsv|list|php)$//i;
         $outfile = "$output_dir_for_cat/$source_label.rpz";
@@ -244,11 +310,18 @@ foreach my $entry (@categorized_sources) {
     close $out;
     print "Wrote $outfile\n";
 
+    # Update metadata with domain count
+    $source_metadata{$source}{domains} = $entry_count;
+
     my $list_time = time() - $list_start;
     $list_stats{$source_label} = { domains => $entry_count, error => 0, time => $list_time };
     $total_domains += $entry_count;
     $lists_ok++;
 }
+
+# --- Save metadata ---
+make_path("$output_dir/tools/logs") unless -d "$output_dir/tools/logs";
+write_file($metadata_file, encode_json(\%source_metadata));
 
 my $global_time = time() - $global_start;
 close $err_fh if $err_fh;
@@ -267,8 +340,11 @@ $status .= sprintf("%-35s %12s %12s\n", "List", "Domains", "Time (s)");
 $status .= "-" x 62 . "\n";
 foreach my $label (sort keys %list_stats) {
     my $stat = $list_stats{$label};
-    next if $stat->{error};
-    $status .= sprintf("%-35s %12d %12.2f\n", $label, $stat->{domains}, $stat->{time});
+    if ($stat->{error}) {
+        $status .= sprintf("%-35s %12s %12s\n", $label, "ERROR", "-");
+    } else {
+        $status .= sprintf("%-35s %12d %12.2f\n", $label, $stat->{domains}, $stat->{time});
+    }
 }
 if (@error_sources) {
     $status .= "\nFailed sources:\n";
@@ -283,6 +359,24 @@ if ($status_report) {
     print $sfh $status;
     close $sfh;
 }
+
+# --- Generate SOURCES.md ---
+my $sources_md = "# Source Lists Overview\n\n";
+$sources_md .= "This file provides an overview of the blocklists used in this project, including their category, last update time, number of entries, and license.\n\n";
+$sources_md .= "| Source URL | Category | Last Updated | Entries | License |\n";
+$sources_md .= "|------------|----------|--------------|---------|---------|\n";
+foreach my $entry (@categorized_sources) {
+    my $url = $entry->{url};
+    my $category = $entry->{category};
+    my $last_updated = $source_metadata{$url}{last_updated} ? strftime("%Y-%m-%d %H:%M:%S", localtime($source_metadata{$url}{last_updated})) : "Never";
+    my $domains = $source_metadata{$url}{domains} // 0;
+    my $license = $url_to_filename{$url}{comments} ? (split(/;/, $url_to_filename{$url}{comments}) )[0] : "Unknown";
+    $license =~ s/License: //; # Extract only the license type
+    $sources_md .= "| $url | $category | $last_updated | $domains | $license |\n";
+}
+open(my $sources_fh, '>', "$output_dir/SOURCES.md") or warn "Cannot write SOURCES.md: $!\n";
+print $sources_fh $sources_md;
+close $sources_fh;
 
 # --- RPZ Validation ---
 if ($validate) {
@@ -388,7 +482,6 @@ sub convert_blocklist_to_rpz {
         $line =~ s/^\s+|\s+$//g;
 
         if ($line =~ /^\s*[#;]/) {
-            # Convert # comments to ; comments for Unbound compatibility
             $line =~ s/^#/;/;
             push @output_lines, "$line\n";
             next;
@@ -441,15 +534,13 @@ sub convert_blocklist_to_rpz {
     $header .= "; Generated by blocklist2rpz-multi.pl on " . scalar(localtime) . "\n";
     $header .= "; Source URL: $source_url\n";
     $header .= ";\n";
-    # Add license and source comments from list-mappings.csv
     if ($comments && $comments ne "No comments provided") {
         foreach my $comment_line (split /;/, $comments) {
-            $comment_line =~ s/^\s+|\s+$//g; # Trim whitespace
+            $comment_line =~ s/^\s+|\s+$//g;
             $header .= "; $comment_line\n" if $comment_line;
         }
         $header .= ";\n";
     }
-    # Add special note for KADhosts (CC BY-SA 4.0)
     if ($source_url eq 'https://raw.githubusercontent.com/PolishFiltersTeam/KADhosts/master/KADhosts.txt') {
         $header .= "; Note: This RPZ file is licensed under CC BY-SA 4.0 as required by KADhosts\n";
         $header .= ";\n";
