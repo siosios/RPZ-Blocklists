@@ -11,7 +11,7 @@ ads,https://v.firebog.net/hosts/Prigent-Ads.txt
 ads,raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/anti.piracy.txt
 ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/blocklist-referral-native.txt
 ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/doh-vpn-proxy-bypass.txt
-ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/doh.txt,ads,ads_hagezi_doh.rpz
+ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/doh.txt
 ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/native.samsung.txt
 ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/popupads.txt
 ads,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.mini.txt
