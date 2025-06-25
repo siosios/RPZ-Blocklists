@@ -45,6 +45,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           find ads malware phishing tracking misc social -type f -name '*.rpz' | while read -r file; do
             echo "Validating $file"
+            if ! named-checkzone -m 2048 -i none rpz.local "$file";
             if ! named-checkzone -i none rpz.local "$file"; then
               echo "Invalid RPZ file: $file"
               exit 1
