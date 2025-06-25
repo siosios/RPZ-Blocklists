@@ -19,7 +19,7 @@ jobs:
         with:
           name: rpz-logs
           path: tools/logs
-        continue-on-error: true  # Continue if no artifact exists (e.g., first run)
+        continue-on-error: true
 
       - name: Set up Perl
         uses: shogo82148/actions-setup-perl@v1
@@ -28,20 +28,13 @@ jobs:
 
       - name: Install Perl dependencies
         run: |
-          cpanm --notest LWP::UserAgent
-          cpanm --notest HTTP::Request
-          cpanm --notest URI::Escape
-          cpanm --notest JSON
-          cpanm --notest Text::CSV
-          cpanm --notest Digest::SHA
-          cpanm --notest File::Slurp
+          cpanm --notest LWP::UserAgent HTTP::Request URI::Escape JSON Text::CSV Digest::SHA File::Slurp
         env:
           PERL5LIB: ${{ github.workspace }}/local/lib/perl5:${{ github.workspace }}/local/lib/perl5/x86_64-linux
 
       - name: Create directories
         run: |
-          mkdir -p ads malware phishing tracking misc social
-          mkdir -p tools/logs
+          mkdir -p ads malware phishing tracking misc social tools/logs
 
       - name: Run blocklist2rpz-multi.pl
         run: |
@@ -54,7 +47,6 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add ads/*.rpz malware/*.rpz phishing/*.rpz tracking/*.rpz misc/*.rpz social/*.rpz SOURCES.md
-          # Ignore dynamic comments (e.g., date, count) in .rpz files for change detection
           git diff --cached --ignore-matching-lines='^;.*\(.*\)$' --ignore-matching-lines='^;.*[0-9]\{8\}' > diff_output.txt
           if [ -s diff_output.txt ]; then
             git commit -m "Update RPZ blocklists and SOURCES.md"
@@ -72,3 +64,8 @@ jobs:
             tools/logs/*.txt
             tools/logs/source_metadata.json
           retention-days: 7
+
+      - name: Clean up old logs
+        run: |
+          find $GITHUB_WORKSPACE/tools/logs/ -type f -mtime +7 -delete
+        if: always()
