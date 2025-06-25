@@ -48,7 +48,7 @@
 #   - urllist.txt must use the <category>,<url> format
 #   - list-mappings.csv must use the <url>,<category>,<filename>,<comments> format
 #
-# Version: 1.4 (added license column in SOURCES.md)
+# Version: 1.5 (fixed wide character error with UTF-8 encoding)
 # Author: ummeegge, with community contributions
 ###############################################################################
 
@@ -65,6 +65,7 @@ use Text::CSV;
 use JSON;
 use Digest::SHA qw(sha256_hex);
 use File::Slurp;
+use Encode qw(encode);
 
 # --- Command-line option variables ---
 my $wildcards         = 0;
@@ -227,8 +228,7 @@ foreach my $entry (@categorized_sources) {
                 next;
             }
             $content = $resp->decoded_content;
-            my $content_hash = sha256_hex($content);
-
+            my $content_hash = sha256_hex(encode('UTF-8', $content));
             # Fallback: Check content hash
             if ($content_hash eq $current_metadata->{hash}) {
                 print "No changes for $source (hash unchanged), skipping.\n";
@@ -260,7 +260,7 @@ foreach my $entry (@categorized_sources) {
         local $/;
         $content = <$fh>;
         close $fh;
-        my $content_hash = sha256_hex($content);
+        my $content_hash = sha256_hex(encode('UTF-8', $content));
         if ($content_hash eq $current_metadata->{hash}) {
             print "No changes for $source (hash unchanged), skipping.\n";
             $list_stats{$source_label} = { domains => $current_metadata->{domains}, error => 0, time => 0 };
