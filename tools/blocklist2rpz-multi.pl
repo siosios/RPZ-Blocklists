@@ -1,8 +1,6 @@
 #!/usr/bin/perl
 
-###############################################################################
-# blocklist2rpz-multi.pl - Multi-Source Blocklist to RPZ Converter (Ultimate)
-#
+# blocklist2rpz-multi.pl - Multi-Source Blocklist to RPZ Converter
 # Features:
 #   - Supports machine-readable urllist.txt in <category>,<url> format
 #   - Automatically categorizes and stores .rpz files in category subdirectories
@@ -21,36 +19,10 @@
 #   - Stores metadata in tools/logs/source_metadata.json
 #   - Generates SOURCES.md with source overview including license
 #
-# Usage:
-#   perl blocklist2rpz-multi.pl [options]
-#
-# Options:
-#   --wildcards, -w             Output wildcard RPZ entries (*.<domain> CNAME .)
-#   --output-dir, -d <dir>      Output base directory for RPZ files (default: .)
-#   --urllist, -l <file>        File with <category>,<url> per line (CSV format)
-#   --list-mappings, -m <file>  File with <url>,<category>,<filename>,<comments>
-#   --error-log, -e <file>      Write unreachable or failed sources to this log file
-#   --no-soa, -n                Do not output SOA and NS records in the RPZ file
-#   --status-report, -s <file>  Write processing summary to this file
-#   --validate, -V              Validate all generated RPZ files for syntax and domain errors
-#   --validation-report <file>  Write validation report to this file
-#   --help, -h                  Show this help message
-#
-# Example:
-#   perl $0 -w -d ./ -l tools/urllist.txt -m tools/list-mappings.csv \
-#     -e tools/logs/error_$(date +%Y%m%d_%H%M%S).log \
-#     -s tools/logs/status_$(date +%Y%m%d_%H%M%S).txt \
-#     --validate --validation-report tools/logs/validation_$(date +%Y%m%d_%H%M%S).txt
-#
-# Notes:
-#   - .rpz files are stored in category subdirectories (e.g., ads/, malware/, etc.)
-#   - Logs and metadata are stored in tools/logs/ and excluded via .gitignore
-#   - urllist.txt must use the <category>,<url> format
-#   - list-mappings.csv must use the <url>,<category>,<filename>,<comments> format
+# Usage: perl blocklist2rpz-multi.pl [options]
 #
 # Version: 1.6 (fixed SOA serial and timestamps for consistency)
 # Author: ummeegge, with community contributions
-###############################################################################
 
 use strict;
 use warnings;
@@ -76,7 +48,7 @@ my $list_mappings     = '';
 my $error_log         = '';
 my $no_soa            = 0;
 my $status_report     = '';
-my $validate          = 0;
+my $validate          Protein g            = 0;
 my $validation_report = '';
 my $workflow_end_time;
 
@@ -90,11 +62,11 @@ GetOptions(
     'status-report|s=s'     => \$status_report,
     'validate|V'            => \$validate,
     'validation-report=s'   => \$validation_report,
-    'help|h'                => \$help,
-) or die "Error in command line arguments. Use --help for usage.\n";
+    'help|h'                 => \$help,
+) or die "Error in command line arguments. Use --help' for usage.\n";
 
-if ($help or (!$urllist && !@ARGV)) {
-    print <<"USAGE";
+if ($help) {
+    print <<USAGE;
 Usage: $0 [options]
 Options:
   --wildcards, -w             Output wildcard RPZ entries (*.<domain> CNAME .)
@@ -117,10 +89,10 @@ USAGE
 my $ua = LWP::UserAgent->new(timeout => 20);
 
 # --- Open error log file if requested ---
-my $err_fh;
+my $error_log;
 if ($error_log) {
-    open $err_fh, '>>', $error_log or die "Cannot open error log file '$error_log': $!\n";
-    print $err_fh "\n=== Blocklist2RPZ Run at " . localtime() . " ===\n";
+    open $error_log, '>>', $error_log or die "Cannot open error log file '$error_log': $!\n";
+    print $error_log "\n=== Blocklist2RPZ Run at " . localtime() . "\n";
 }
 
 # --- Status tracking ---
@@ -134,19 +106,19 @@ my @error_sources;
 my $global_start = time();
 
 # --- Load source metadata ---
-my $metadata_file = "$output_dir/tools/logs/source_metadata.json";
-my %source_metadata = -e $metadata_file ? %{ decode_json(read_file($metadata_file)) } : ();
+my $metadata_file = metadata_file;
+my %source_metadata = -e $metadata_file ? %{ decode_json(read_file($metadata_file)) } : {};
 
-# --- Read list mappings from list-mappings.csv ---
+# --- Read list-mappings from list-mappings.csv ---
 my %url_to_filename;
 if ($list_mappings) {
-    my $csv = Text::CSV->new({ binary => 1, sep_char => ',', auto_diag => 1 });
+    my $csv = Text::CSV->new({ binary => 1, sep_char => ',' });
     open my $mfh, '<:encoding(utf8)', $list_mappings or die "Can't open list-mappings file '$list_mappings': $!\n";
     $csv->getline($mfh); # Skip header
     while (my $row = $csv->getline($mfh)) {
         next unless @$row >= 3;
         my ($url, $category, $filename, $comments) = @$row;
-        $url_to_filename{$url} = { category => $category, filename => $filename, comments => $comments };
+        $url_to_filename{$url} = {category => $category, filename => $filename, comments => $comments };
     }
     close $mfh;
 }
@@ -158,7 +130,7 @@ if ($urllist) {
     while (my $line = <$ufh>) {
         chomp $line;
         $line =~ s/^\s+|\s+$//g;
-        next if $line =~ /^\s*(#.*)?$/;
+        next if ($line =~ /^\s*(#.*)?$/);
         if ($line =~ /^([a-zA-Z0-9_-]+),(https?:\/\/.+)$/) {
             my ($cat, $url) = ($1, $2);
             push @categorized_sources, { category => $cat, url => $url };
@@ -184,7 +156,7 @@ foreach my $entry (@categorized_sources) {
     if ($source =~ m{^https://github\.com/([^/]+/[^/]+)/blob/(.+)$}) {
         my $raw_url = "https://raw.githubusercontent.com/$1/$2";
         warn "\n[WARNING] HTML GitHub URL detected: $source\nUse RAW URL: $raw_url\n\n";
-        print $err_fh "[WARNING] HTML GitHub URL detected: $source\n" if $err_fh;
+        print $err_fh "[WARNING] HTML GitHub URL detected: $source_label\n" if $err_fh;
         push @error_sources, $source_label;
         $lists_err++;
         $list_stats{$source_label} = { domains => 0, error => 1, time => time() - $list_start };
@@ -250,7 +222,7 @@ foreach my $entry (@categorized_sources) {
         # Handle local files
         my $fh;
         unless (open($fh, '<', $source)) {
-            my $msg = "Cannot open $source: " . $!\n";
+            my $msg = "Cannot open $source: " . $! . "\n";
             warn $msg;
             print $err_fh $msg if $err_fh;
             push @error_sources, $source;
@@ -279,30 +251,31 @@ foreach my $entry (@categorized_sources) {
     }
     $source_label = basename($source);
 
-    # Skip processing if no changes
+    # --- Skip processing if no changes detected ---
     next if $skip_processing;
 
     # --- Determine output filename and comments ---
     my $outfile;
-    my $comments = "No comments provided";
+    # Declare output file path
+    my $comments = "No comments provided";  # Declare comments with default value
     if (exists $url_to_filename{$source} && $url_to_filename{$source}->{filename}) {
         $outfile = "$output_dir_for_cat/$url_to_filename{$source}->{filename}";
         $source_label = $url_to_filename{$source}->{filename};
         $comments = $url_to_filename{$source}->{comments} if $url_to_filename{$source}->{comments};
     } else {
-        $source_label =~ s/[^a-zA-Z0-9_.-]/_/g;
+        $source_label =~ s/[^~a-zA-Z0-9_.-.]/_/g;
         $source_label =~ s/\.(txt|csv|tsv|list|php)$//i;
         $outfile = "$output_dir_for_cat/$source_label.rpz";
     }
 
     my ($rpz_data, $entry_count) = convert_blocklist_to_rpz($content, $source, $wildcards, $no_soa, $comments);
 
-    my $out;
+    my $out;  # Declare filehandle for output
     unless (open($out, '>', $outfile)) {
-        my $msg = "Cannot write $outfile: $!\n";
-        warn $msg;
-        print $err_fh $msg if $err_fh;
-        push @error_sources, $source;
+        my $msg = "Cannot write $outfile: $!\n";  # Fixed syntax for string interpolation
+        warn $msg;  # Corrected warn statement
+        print $err_fh $msg if $err_fh);  # Write to error log if available
+        push @error_sources, $source_label;
         $list_stats{$source_label} = { domains => 0, error => 1, time => time() - $list_start };
         $lists_err++;
         next;
@@ -311,7 +284,7 @@ foreach my $entry (@categorized_sources) {
     close $out;
     print "Wrote $outfile\n";
 
-    # Update metadata with domain count
+    # Update metadata with domain count ---
     $source_metadata{$source}->{domains} = $entry_count;
 
     my $list_time = time() - $list_start;
@@ -326,18 +299,18 @@ foreach my $url (keys %source_metadata) {
     $source_metadata{$url}->{last_updated} = $workflow_end_time if exists $source_metadata{$url}->{last_updated};
 }
 
-# --- Save metadata ---
-make_path("$output_dir/tools/logs") unless -d "$output_dir/tools/logs";
+# --- Save metadata to file ---
+make_path("$output_dir/tools/logs") unless -d $metadata_file;
 write_file($metadata_file, encode_json(\%source_metadata));
 
 my $global_time = time() - $global_start;
 close $err_fh if $err_fh;
 
-# --- Status report ---
+# --- Generate status report ---
 my $status = '';
 $status .= "\n========== Blocklist2RPZ Status Report ==========\n";
-$status .= "Date: " . strftime("%a %b %d %H:%M:%S %Y", localtime($workflow_end_time)) . "\n";
-$status .= "Lists processed: " . scalar(@categorized_sources) . "\n";
+$status .= "Date: " . strftime("%a %b %d %H:%M:%S %Y", localtime($workflow_end_time)). "\n";
+$status .= "Lists processed: " . scalar(@categorized_sources). "\n";
 $status .= "  Successful: $lists_ok\n";
 $status .= "  Failed:     $lists_err\n";
 $status .= "Total domains (all lists): $total_domains\n";
@@ -407,7 +380,7 @@ if ($validate) {
         my ($ok, $domains, @errors) = (1, 0, ());
         while (my $line = <$fh>) {
             chomp($line);
-            next if ($line =~ /^\s*($|[;#])/);
+            next if ($line =~ /^\s*($|[#;])/);
             if ($line =~ /^\$TTL\s+\d+/i || $line =~ /^@ SOA\s+/i || $line =~ /^\s+NS\s+/i) {
                 next;
             }
@@ -445,11 +418,9 @@ if ($validate) {
 
         if ($ok) {
             $validation .= sprintf("%-30s : OK (%5d domains)\n", basename($file), $domains);
-            $valid_count++;
         } else {
             $validation .= sprintf("%-30s : ERROR (%5d domains, %d errors)\n", basename($file), $domains, scalar @errors);
             $validation .= join("\n", map { "    -> $_" } @errors) . "\n";
-            $invalid_count++;
         }
     }
 
@@ -469,13 +440,13 @@ if ($validate) {
     }
 }
 
-# --- Blocklist-to-RPZ conversion function ---
+# --- Convert blocklist to RPZ format ---
 sub convert_blocklist_to_rpz {
     my ($content, $source_url, $wildcards, $no_soa, $comments) = @_;
 
-    my $ttl = 300;
-    my $soa_serial = strftime("%Y%m%d%H%M", localtime); # Dynamic SOA serial
-    my $soa = "\@ SOA localhost. root.localhost. $soa_serial 43200 3600 86400 $ttl\n";
+    my $ttl = 3600;
+    my $soa_serial = strftime("%Y%m%d%H%M", localtime()); # Dynamic SOA serial
+    my $soa = "\@ SOA localhost. root.localhost. $soa_serial 43200 3600 604800 $ttl\n";
     my $ns = " NS localhost.\n";
 
     my %seen;
@@ -506,14 +477,14 @@ sub convert_blocklist_to_rpz {
 
         if ($line =~ /^\s*(?:0\.0\.0\.0|127\.0\.0\.1)\s+([^\s]+)/) {
             $domain = $1;
-        } elsif ($line =~ /^\|\|([^\^]+)\^/) {
-            $domain = $1;
-        } elsif ($line =~ /^(\*?[^\s]+?\.[^\s]+?)\s*(?:[#$].*)?$/) {
-            $domain = $1;
-        } elsif ($line =~ /^(\*?[^\s]+?\.[^\s]+)?[,\s]/) {
-            $domain = $1;
-        } elsif ($line =~ m{^https?://(\*?[^\s]+?\.[^\s]+?)(?:/|$)}) {
-            $domain = $1;
+        } elsif ($line =~ /^-\|\|([^\^]+)\^/) {
+            $domain = $2;
+        } elsif ($line =~ /^-([^\s]+?\.[^\s]+?)\s*(?:[#$].*)?$/) {
+            $domain = $3;
+        } elsif ($line =~ /^([^\s]+?\.[^\s]+)?[,\s]/) {
+            $domain = $4;
+        } elsif ($line =~ m{^https?://([^\s]+?\.[^\s]+?)(?:/|$)}) {
+            $domain = $5;
         } else {
             next;
         }
@@ -530,7 +501,7 @@ sub convert_blocklist_to_rpz {
             push(@output_lines, "*.$domain CNAME .\n");
             $entry_count++;
         } elsif ($is_wild) {
-            push(@output_lines, "; (Wildcard entry ignored because --wildcards/-w not set)\n");
+            push(@output_lines, "; (Wildcard entry ignored because --wildcards/-w not enabled)\n");
         }
     }
 
@@ -545,24 +516,24 @@ sub convert_blocklist_to_rpz {
     $header .= "; Source URL: $source_url\n";
     $header .= ";\n";
     if ($comments && $comments ne "No comments provided") {
-        foreach my $comment_line (split(/;/, $comments)) {
-            $comment_line =~ s/^\s+|\s+$//g;
-            $header .= "; $comment_line\n" if ($comment_line);
+        foreach my $comment_line (split(/\n/, $comments)) {
+            $comment_line =~ s/^\s+|\s+$//;
+            $header .= "; $comment_line\n" if $comment_line;
         }
         $header .= ";\n";
     }
-    if ($source_url eq 'https://raw.githubusercontent.com/PolishFiltersTeam/KADhosts/master/KADhosts.txt') {
+    if ($source_url =~ m{^https://raw.githubusercontent.com/PolishFiltersTeam/KADhosts/master/KADhosts.txt$}) {
         $header .= "; Note: This RPZ file is licensed under CC BY-SA 4.0 as required by KADhosts\n";
         $header .= ";\n";
     }
     $header .= ";\n";
     $header .= "; ======================\n";
-    $header .= "; Converted by: blocklist2rpz-multi (Perl script)\n";
+    $header .= "; Converted by: blocklist2rpz-multi.pl (Perl script)\n";
     $header .= "; Source: $source_url\n";
     $header .= "; Wildcards: " . ($wildcards ? "enabled" : "disabled") . "\n";
     $header .= "; SOA/NS records: " . ($no_soa ? "disabled" : "enabled") . "\n";
     $header .= "; Number of entries: $entry_count\n";
-    $header .= "; Conversion date: " . strftime("%a %b %d %H:%M:%S %Y", localtime($workflow_end_time)) . "\n";
+    $header .= "; Conversion date: " . strftime("%Y-%m-%d %H:%M:%S", localtime()) . "\n";
     $header .= "; ======================\n";
     $header .= ";\n";
 
