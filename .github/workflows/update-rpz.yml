@@ -45,7 +45,7 @@ jobs:
           cd "$GITHUB_WORKSPACE"
           find ads malware phishing tracking misc social -type f -name '*.rpz' | while read -r file; do
             echo "Validating $file"
-            size=$(stat -f %z "$file")  # File size in bytes
+            size=$(stat --format=%s "$file")  # File size in bytes (GNU stat)
             if [ "$size" -gt 100000000 ]; then
               echo "Skipping validation for $file (size: $size bytes, too large)"
               continue
