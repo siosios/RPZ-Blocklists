@@ -24,7 +24,7 @@ env:
 jobs:
   update-rpz:
     runs-on: ubuntu-latest
-    timeout-minutes: 45 # Prevents hanging jobs
+    timeout-minutes: 45 # Prevent hanging jobs
 
     steps:
       # Step 1: Checkout repository with full history
@@ -113,20 +113,65 @@ jobs:
             }
           '
 
-      # Step 8: Create GitHub issue for outdated sources
-      - name: Create issue for outdated sources
+      # Step 8: Create or update GitHub issue for outdated sources
+      - name: Create or update issue for outdated sources
         if: always()
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            // Load file system module
             const fs = require('fs');
-            if (fs.existsSync('tools/logs/outdated.txt')) {
-              const content = fs.readFileSync('tools/logs/outdated.txt', 'utf8');
+            // Exit if outdated.txt does not exist
+            if (!fs.existsSync('tools/logs/outdated.txt')) return;
+
+            // Read the content of outdated.txt
+            const content = fs.readFileSync('tools/logs/outdated.txt', 'utf8');
+            const searchTitle = 'Outdated Sources Detected';
+
+            // Fetch all issues (open and closed)
+            const { data: issues } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'all',
+              per_page: 100,
+            });
+
+            // Find existing issue with the same title
+            const existingIssue = issues.find(issue => issue.title === searchTitle);
+
+            const now = new Date();
+            const msInDay = 24 * 60 * 60 * 1000;
+
+            if (existingIssue) {
+              const updatedAt = new Date(existingIssue.updated_at);
+              const daysSinceUpdate = (now - updatedAt) / msInDay;
+
+              if (daysSinceUpdate > 60) {
+                // If issue is older than 60 days, reopen if closed and add a comment
+                if (existingIssue.state === 'closed') {
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: existingIssue.number,
+                    state: 'open',
+                  });
+                }
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existingIssue.number,
+                  body: `Reopening issue: The following sources are still outdated as of ${now.toISOString()}:\n\n${content}`,
+                });
+              } else {
+                console.log(`Existing issue updated ${daysSinceUpdate.toFixed(1)} days ago. Skipping new notifications.`);
+              }
+            } else {
+              // No existing issue found - create a new one
               await github.rest.issues.create({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                title: 'Outdated Sources Detected',
+                title: searchTitle,
                 body: `The following sources are outdated (not updated in the last 30 days):\n\n${content}`,
               });
             }
@@ -138,12 +183,15 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            // Load file system module
             const fs = require('fs');
+            // List error log files sorted
             const logs = fs.readdirSync('tools/logs').filter(f => f.startsWith('error_') && f.endsWith('.log')).sort();
             const errorLog = logs.length > 0 ? `tools/logs/${logs[logs.length - 1]}` : null;
             if (errorLog && fs.existsSync(errorLog)) {
               const content = fs.readFileSync(errorLog, 'utf8');
               if (content.includes('Reset hash') || content.includes('failed for')) {
+                // Extract failed sources from log content
                 const sources = content.match(/(?:Reset hash for|HEAD request failed for|Could not fetch) (.+?)(?=(?:\n|$| after|:\s))/g) || [];
                 if (sources.length > 0) {
                   const failedSources = sources.map(s => s.replace(/^(Reset hash for|HEAD request failed for|Could not fetch) /, '')).join('\n');
