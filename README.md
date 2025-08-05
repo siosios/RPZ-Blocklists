@@ -229,6 +229,7 @@ rpz:
     rpz-log-name:           twitOne
     rpz-signal-nxdomain-ra: yes
 ```
+Or use for example the IPFire web user interface https://www.ipfire.org/docs/addons/rpz for RPZ with Unbound, which provides a working solution on IPFire (although development is currently stalled). You can simply copy&paste the "RPZ File URL" from the SOURCES.md file https://github.com/twitOne/RPZ-Blocklists/blob/main/SOURCES.md and integrate the list as explaind in the IPFire wiki under the section "Add new line".
 
 ## Current Categories
 
