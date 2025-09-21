@@ -1,4 +1,7 @@
 name: Update RPZ Blocklists
+permissions:
+  contents: write
+  issues: write
 
 # Triggers
 on:
