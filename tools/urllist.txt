@@ -42,8 +42,6 @@ misc,https://nsfw.oisd.nl
 misc,https://nsfw-small.oisd.nl
 misc,https://small.oisd.nl
 misc,https://raw.githubusercontent.com/AssoEchap/stalkerware-indicators/master/generated/hosts
-misc,https://raw.githubusercontent.com/badmojr/1Hosts/master/Lite/domains.txt
-misc,https://raw.githubusercontent.com/badmojr/1Hosts/master/Pro/rpz.txt
 misc,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/pro.mini.txt
 misc,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/pro.txt
 misc,https://raw.githubusercontent.com/hagezi/dns-blocklists/main/rpz/ultimate.mini.txt
