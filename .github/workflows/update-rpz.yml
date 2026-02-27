@@ -177,33 +177,33 @@ jobs:
             }
 
       # Step 9: Create GitHub issue for failed sources
-      - name: Create issue for failed sources
-        if: always()
-        uses: actions/github-script@v6
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            // Load file system module
-            const fs = require('fs');
-            // List error log files sorted
-            const logs = fs.readdirSync('tools/logs').filter(f => f.startsWith('error_') && f.endsWith('.log')).sort();
-            const errorLog = logs.length > 0 ? `tools/logs/${logs[logs.length - 1]}` : null;
-            if (errorLog && fs.existsSync(errorLog)) {
-              const content = fs.readFileSync(errorLog, 'utf8');
-              if (content.includes('Reset hash') || content.includes('failed for')) {
-                // Extract failed sources from log content
-                const sources = content.match(/(?:Reset hash for|HEAD request failed for|Could not fetch) (.+?)(?=(?:\n|$| after|:\s))/g) || [];
-                if (sources.length > 0) {
-                  const failedSources = sources.map(s => s.replace(/^(Reset hash for|HEAD request failed for|Could not fetch) /, '')).join('\n');
-                  await github.rest.issues.create({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    title: 'Failed Sources Detected',
-                    body: `The following sources failed or had their hashes reset:\n\n${failedSources}\n\nFull log:\n${content}`,
-                  });
-                }
-              }
-            }
+    #  - name: Create issue for failed sources
+    #    if: always()
+    #    uses: actions/github-script@v6
+   #     with:
+   #       github-token: ${{ secrets.GITHUB_TOKEN }}
+    #      script: |
+    #        // Load file system module
+    #        const fs = require('fs');
+    #        // List error log files sorted
+    #        const logs = fs.readdirSync('tools/logs').filter(f => f.startsWith('error_') && f.endsWith('.log')).sort();
+    #        const errorLog = logs.length > 0 ? `tools/logs/${logs[logs.length - 1]}` : null;
+    #        if (errorLog && fs.existsSync(errorLog)) {
+    #          const content = fs.readFileSync(errorLog, 'utf8');
+    #          if (content.includes('Reset hash') || content.includes('failed for')) {
+    #            // Extract failed sources from log content
+    #            const sources = content.match(/(?:Reset hash for|HEAD request failed for|Could not fetch) (.+?)(?=(?:\n|$| after|:\s))/g) || [];
+    #            if (sources.length > 0) {
+    #              const failedSources = sources.map(s => s.replace(/^(Reset hash for|HEAD request failed for|Could not fetch) /, '')).join('\n');
+    #              await github.rest.issues.create({
+    #                owner: context.repo.owner,
+    #                repo: context.repo.repo,
+    #                title: 'Failed Sources Detected',
+    #                body: `The following sources failed or had their hashes reset:\n\n${failedSources}\n\nFull log:\n${content}`,
+    #              });
+     #           }
+    #          }
+    #        }
 
       # Step 10: Commit and push changes with conflict resolution
       - name: Commit and push changes
