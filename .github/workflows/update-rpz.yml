@@ -23,7 +23,8 @@ env:
 
 jobs:
   update-rpz:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    #runs-on: ubuntu-latest
     timeout-minutes: 45 # Prevent hanging jobs
 
     steps:
