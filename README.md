@@ -12,7 +12,7 @@
 
 ```
 
-![Build Status](https://github.com/twitOne/RPZ-Blocklists/actions/workflows/update-rpz.yml/badge.svg)
+![Build Status](https://github.com/siosios/RPZ-Blocklists/actions/workflows/update-rpz.yml/badge.svg)
 ![Contributors](https://img.shields.io/github/contributors/twitOne/RPZ-Blocklists)
 ![Code Quality](https://img.shields.io/badge/code%20quality-perl%20script-lightgrey)
 [![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-blueviolet)](https://github.com/sponsors/twitOne)
